@@ -1,0 +1,13 @@
+# Environment and Python artifacts
+.venv/
+__pycache__/
+*.pyc
+
+# Credentials (CRITICAL for security)
+.env
+
+# IDE (VS Code) files
+.vscode/
+
+# Local runtime files (like the alembic internal files)
+alembic.ini

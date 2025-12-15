@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Auction System</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.js"></script>
+    <style>
+        /* --- General Styling --- */
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            margin: 0; 
+            padding: 40px 20px; 
+            background-color: #f0f2f5; 
+            display: flex;
+            justify-content: center;
+        }
+        .container { 
+            width: 100%;
+            max-width: 900px; 
+            background: white; 
+            padding: 30px; 
+            border-radius: 12px; 
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1); 
+        }
+        h1 { color: #1e3a8a; margin-top: 0; border-bottom: 2px solid #eff3f7; padding-bottom: 15px; }
+        h2 { color: #333; font-size: 1.5rem; margin-top: 25px; }
+        h3 { color: #10b981; font-size: 1.2rem; margin-top: 0; }
+        p { color: #555; }
+
+        /* --- Status & Connection --- */
+        #status { 
+            font-weight: bold; 
+            margin-bottom: 20px; 
+            padding: 12px; 
+            border-radius: 6px; 
+            text-align: center;
+        }
+        .connected { color: #065f46; background-color: #d1fae5; border: 1px solid #10b981; }
+        .disconnected { color: #991b1b; background-color: #fee2e2; border: 1px solid #f87171; }
+        
+        /* --- Auction Details Card --- */
+        #auction-details {
+            padding: 20px;
+            background-color: #f9f9f9;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            border-left: 5px solid #1e3a8a;
+        }
+        #current-bid-display {
+            font-size: 1.8rem;
+            color: #ef4444; 
+            font-weight: 700;
+        }
+        /* Style for the embedded image */
+        #auction-image {
+            max-width: 100%; 
+            max-height: 200px; 
+            object-fit: contain; 
+            margin-bottom: 15px; 
+            border-radius: 4px;
+            display: block; 
+        }
+
+        /* --- Form Layouts (General) --- */
+        .section-box { 
+            margin-top: 30px; 
+            padding: 20px; 
+            border-radius: 8px; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+            margin-bottom: 30px; 
+        }
+        .admin-section {
+            background-color: #fce4ec; 
+            border-left: 5px solid #e91e63;
+        }
+        .view-section {
+            background-color: #e8eaf6;
+            border-left: 5px solid #5c6bc0;
+        }
+        .bid-section {
+            background-color: #e3f2fd;
+            border-left: 5px solid #1e3a8a;
+        }
+
+        /* Form Grid/Flex Layouts */
+        #new-auction-form {
+            display: grid;
+            grid-template-columns: 1fr 1fr; 
+            gap: 15px 20px;
+            margin-top: 15px;
+        }
+        #new-auction-form button, #new-auction-form #create-auction-message, #new-auction-form .span-2 {
+            grid-column: span 2;
+        }
+        #bidding-form, #view-auction-form {
+            display: flex;
+            gap: 20px;
+            align-items: flex-end;
+            margin-top: 15px;
+        }
+
+        .form-group {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+        }
+        .form-group label {
+            font-weight: 600;
+            color: #1e40af;
+            margin-bottom: 5px;
+        }
+        input { 
+            padding: 10px; 
+            border-radius: 6px; 
+            border: 1px solid #cceeff; 
+            font-size: 1rem;
+        }
+        button { 
+            padding: 10px 20px; 
+            background-color: #10b981; 
+            color: white; 
+            cursor: pointer; 
+            border: none; 
+            border-radius: 6px;
+            font-weight: 700;
+            transition: background-color 0.2s;
+        }
+        button:hover { 
+            background-color: #059669; 
+        }
+        #view-auction-form button {
+            background-color: #5c6bc0;
+        }
+        #view-auction-form button:hover {
+            background-color: #3f51b5;
+        }
+
+        /* --- Activity Log --- */
+        #messages h2 { border-bottom: 1px solid #eee; padding-bottom: 10px; }
+        #messages .log-entry { 
+            border-bottom: 1px solid #eef; 
+            padding: 10px 0; 
+            margin-top: 0; 
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        .log-entry b { color: #1e3a8a; }
+        .log-entry .time { color: #888; font-size: 0.85rem; }
+
+        /* --- Alert Styles --- */
+        .alert-message { 
+            margin-top: 15px; 
+            padding: 10px; 
+            border-radius: 4px; 
+            font-weight: 600; 
+            text-align: center;
+            display: none; 
+        }
+        .alert-success { background-color: #d1fae5; color: #065f46; border: 1px solid #10b981; }
+        .alert-error { background-color: #fee2e2; color: #991b1b; border: 1px solid #f87171; }
+
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Live Auction System</h1>
+        <p>Backend: <code>http://localhost:8000</code> | Path: <code>/ws/socket.io</code></p>
+        <div id="status" class="disconnected">Status: Disconnected</div>
+        
+        <div id="auction-details">
+            <h2>Current Auction Details (ID: <span id="target-id">1</span>)</h2>
+            <p>Loading auction data...</p>
+        </div>
+        
+        <div class="section-box view-section">
+            <h3 style="color: #5c6bc0;">View Different Auction</h3>
+            <form id="view-auction-form">
+                <div class="form-group">
+                    <label for="auction_id_input">Enter Auction ID:</label>
+                    <input type="number" id="auction_id_input" min="1" required value="1">
+                </div>
+                <button type="submit">Load Auction</button>
+            </form>
+        </div>
+        <div class="section-box admin-section">
+            <h3 style="color: #e91e63;">Start a New Auction (Admin)</h3>
+            <p style="color: #e91e63; font-weight: 600;">Note: Auction End Time is automatically set to 24 hours from creation.</p>
+            <form id="new-auction-form">
+                <div class="form-group">
+                    <label for="new_title">Title:</label>
+                    <input type="text" id="new_title" required value="New Collector Item">
+                </div>
+                <div class="form-group">
+                    <label for="new_starting_price">Starting Price ($):</label>
+                    <input type="number" id="new_starting_price" step="0.01" min="0.01" required value="100.00">
+                </div>
+                <div class="form-group span-2">
+                    <label for="new_description">Description:</label>
+                    <input type="text" id="new_description" required value="Rare, limited edition item.">
+                </div>
+                <div class="form-group span-2">
+                    <label for="new_image_url">Item Image URL (Optional):</label>
+                    <input type="url" id="new_image_url" placeholder="e.g., https://your-cdn.com/item.jpg">
+                </div>
+                <button type="submit">Create New Auction</button>
+            </form>
+            <div id="create-auction-message" class="alert-message"></div>
+        </div>
+        <div class="section-box bid-section">
+            <h3 style="color: #1e40af;">Place Your Bid</h3>
+            <form id="bidding-form">
+                <div class="form-group">
+                    <label for="bidder_id">Your User ID:</label>
+                    <input type="text" id="bidder_id" required value="User_A">
+                </div>
+                <div class="form-group">
+                    <label for="amount">Bid Amount ($):</label>
+                    <input type="number" id="amount" step="0.01" min="0.01" required>
+                </div>
+                <button type="submit">Submit Bid</button>
+            </form>
+            <div id="bid-message" class="alert-message"></div>
+        </div>
+        <div id="messages">
+            <h2>Activity Log (Real-Time Bids)</h2>
+            <p style="color: gray;">(New bids for the currently viewed auction will appear here)</p>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURATION ---
+        let TARGET_AUCTION_ID = 1; 
+        
+        // ** CRITICAL: Socket.IO Initialization **
+        const socket = io('http://localhost:8000', {
+            path: '/ws/socket.io' // Must match the backend configuration
+        }); 
+
+        // --- DOM REFERENCES ---
+        const statusDiv = document.getElementById('status');
+        const messagesDiv = document.getElementById('messages');
+        const auctionDetailsDiv = document.getElementById('auction-details'); 
+        const biddingForm = document.getElementById('bidding-form');
+        const bidMessage = document.getElementById('bid-message');
+        
+        const newAuctionForm = document.getElementById('new-auction-form');
+        const createAuctionMessage = document.getElementById('create-auction-message');
+        
+        const viewAuctionForm = document.getElementById('view-auction-form');
+        const auctionIdInput = document.getElementById('auction_id_input');
+
+        // --- HELPER FUNCTIONS ---
+
+        function showAlert(message, type) {
+            bidMessage.textContent = message;
+            bidMessage.className = `alert-message alert-${type}`;
+            bidMessage.style.display = 'block';
+
+            if (type === 'success') {
+                setTimeout(() => {
+                    bidMessage.style.display = 'none';
+                    bidMessage.textContent = '';
+                }, 3000);
+            }
+        }
+
+        function showCreateAlert(message, type) {
+            createAuctionMessage.textContent = message;
+            createAuctionMessage.className = `alert-message alert-${type}`;
+            createAuctionMessage.style.display = 'block';
+
+            if (type === 'success') {
+                setTimeout(() => {
+                    createAuctionMessage.style.display = 'none';
+                    createAuctionMessage.textContent = '';
+                }, 5000);
+            }
+        }
+
+        // --- CORE FUNCTION: FETCH & DISPLAY AUCTION DETAILS ---
+        async function fetchAuctionDetails(id) {
+            TARGET_AUCTION_ID = id; // Set the global ID variable
+
+            const activityLogTitle = messagesDiv.querySelector('h2');
+            messagesDiv.innerHTML = '';
+            messagesDiv.appendChild(activityLogTitle);
+            messagesDiv.innerHTML += '<p style="color: gray;">(New bids for the currently viewed auction will appear here)</p>';
+
+            try {
+                const response = await fetch(`http://localhost:8000/api/auctions/${TARGET_AUCTION_ID}`);
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const auction = await response.json();
+                
+                const imageHtml = auction.image_url 
+                    ? `<img id="auction-image" src="${auction.image_url}" alt="${auction.title}">` 
+                    : '';
+
+                auctionDetailsDiv.innerHTML = `
+                    <h2>Current Auction Details (ID: <span id="target-id">${auction.id}</span>)</h2>
+                    ${imageHtml}
+                    <h3>${auction.title}</h3>
+                    <p><strong>Description:</strong> ${auction.description}</p>
+                    <p><strong>Status:</strong> ${auction.status}</p>
+                    <p><strong>Starting Price:</strong> $${auction.starting_price}</p>
+                    <p><strong>Current Highest Bid:</strong> <span id="current-bid-display">$${auction.current_highest_bid}</span></p>
+                    <p><strong>Ends:</strong> ${new Date(auction.end_time).toLocaleString()}</p>
+                `;
+                
+                // Update Bidding Form requirements
+                const currentBid = parseFloat(auction.current_highest_bid);
+                const nextMinBid = (currentBid + 0.01).toFixed(2);
+                document.getElementById('amount').value = nextMinBid;
+                document.getElementById('amount').min = nextMinBid;
+
+            } catch (error) {
+                console.error("Error fetching auction details:", error);
+                auctionDetailsDiv.innerHTML = `<h2 style="color:red;">Auction ID ${TARGET_AUCTION_ID} Not Found!</h2><p>Ensure backend is running, seeded, and this ID exists.</p>`;
+            }
+        }
+        
+        // Initial load on page load
+        fetchAuctionDetails(TARGET_AUCTION_ID); 
+        // --- END CORE FUNCTION ---
+
+        // --- EVENT LISTENER: VIEW AUCTION FORM ---
+        viewAuctionForm.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const newId = parseInt(auctionIdInput.value, 10);
+            if (!isNaN(newId) && newId > 0) {
+                fetchAuctionDetails(newId);
+            }
+        });
+
+
+        // --- NEW AUCTION CREATION FUNCTION (CRITICAL ERROR HANDLING FIX) ---
+        newAuctionForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            createAuctionMessage.style.display = 'none'; 
+
+            const title = document.getElementById('new_title').value;
+            const description = document.getElementById('new_description').value;
+            const starting_price = parseFloat(document.getElementById('new_starting_price').value);
+            const image_url = document.getElementById('new_image_url').value.trim(); 
+
+            try {
+                const response = await fetch('http://localhost:8000/api/auctions', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title: title,
+                        description: description,
+                        starting_price: starting_price, // Sent as float, matched by schemas.py
+                        image_url: image_url || null
+                    })
+                });
+
+                // Read the response content as raw text first
+                let dataText = await response.text(); 
+                let data = {};
+                
+                // Then attempt to parse as JSON
+                try {
+                    data = JSON.parse(dataText);
+                } catch (jsonError) {
+                    // If JSON parsing fails, use the raw text content as the error detail
+                    data = { detail: dataText };
+                }
+
+
+                if (response.ok) {
+                    showCreateAlert(`Auction "${data.title}" (ID: ${data.id}) created successfully! Ends in 24 hours. Now viewing ID ${data.id}.`, 'success');
+                    
+                    fetchAuctionDetails(data.id);
+                    auctionIdInput.value = data.id; 
+                    
+                } else {
+                    // Use data.detail (FastAPI standard error), or the raw text, or a fallback
+                    let errorMessage = data.detail || (typeof dataText === 'string' ? dataText : `Status ${response.status}: Failed to extract message.`);
+                    
+                    // Cleanup for FastAPI's internal validation errors (which are long lists)
+                    if (Array.isArray(errorMessage) && errorMessage.length > 0) {
+                        errorMessage = "Validation Error: " + errorMessage.map(err => err.loc.join('.') + ' ' + err.msg).join('; ');
+                    }
+
+                    showCreateAlert(`Creation failed: ${errorMessage}`, 'error');
+                    console.error("Full failed response text:", dataText);
+                }
+
+            } catch (error) {
+                console.error('Network or unexpected error:', error);
+                showCreateAlert('An unexpected network error occurred. Check browser console for details.', 'error');
+            }
+        });
+
+
+        // --- PLACE BID FUNCTION (API CALL) ---
+        biddingForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            bidMessage.style.display = 'none'; 
+
+            const bidder_id = document.getElementById('bidder_id').value.trim();
+            const amount = parseFloat(document.getElementById('amount').value);
+
+            const currentBidElement = document.getElementById('current-bid-display');
+            if (!currentBidElement) {
+                showAlert('Cannot place bid: Auction details not loaded.', 'error');
+                return; 
+            }
+            
+            const currentHighestBidText = currentBidElement.textContent.replace('$', '');
+            const currentHighestBid = parseFloat(currentHighestBidText);
+
+            if (amount <= currentHighestBid) {
+                showAlert(`Bid must be higher than the current highest bid: $${currentHighestBid.toFixed(2)}`, 'error');
+                return;
+            }
+
+            try {
+                const response = await fetch(`http://localhost:8000/api/bids/${TARGET_AUCTION_ID}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ bidder_id: bidder_id, amount: amount })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    showAlert('Bid accepted! Waiting for real-time confirmation...', 'success');
+                } else {
+                    showAlert(`Bid failed: ${data.detail || 'Server error'}`, 'error');
+                    fetchAuctionDetails(TARGET_AUCTION_ID); 
+                }
+
+            } catch (error) {
+                console.error('Network or unexpected error:', error);
+                showAlert('An unexpected network error occurred.', 'error');
+            }
+        });
+
+        // 1. Connection Handlers
+        socket.on('connect', () => {
+            statusDiv.innerHTML = 'Status: CONNECTED! ✅';
+            statusDiv.className = 'connected';
+        });
+
+        socket.on('disconnect', () => {
+            statusDiv.innerHTML = 'Status: DISCONNECTED! ❌';
+            statusDiv.className = 'disconnected';
+        });
+
+        // 2. Bid Listener (The main real-time update)
+        socket.on('new_bid', (data) => {
+            if (data.auctionId !== TARGET_AUCTION_ID) {
+                return;
+            }
+
+            const initialLogMessage = messagesDiv.querySelector('p[style="color: gray;"]');
+            if (initialLogMessage) {
+                initialLogMessage.remove();
+            }
+
+            const currentBidElement = document.getElementById('current-bid-display');
+            const amountInput = document.getElementById('amount');
+            
+            if (currentBidElement) {
+                 currentBidElement.textContent = '$' + data.newBid;
+            }
+
+            const nextMinBid = (parseFloat(data.newBid) + 0.01).toFixed(2);
+            amountInput.value = nextMinBid;
+            amountInput.min = nextMinBid;
+
+            const message = document.createElement('p');
+            message.className = 'log-entry';
+            message.innerHTML = `
+                <span>Auction ${data.auctionId}: New Bid of <b>$${data.newBid}</b> by <b>${data.bidderId}</b></span>
+                <span class="time">${new Date().toLocaleTimeString()}</span>
+            `;
+            messagesDiv.insertBefore(message, messagesDiv.children[1]); 
+        });
+    </script>
+</body>
+</html>
