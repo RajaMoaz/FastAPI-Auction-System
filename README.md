@@ -1,8 +1,4 @@
-======================================================
-FINAL REPOSITORY TEST INSTRUCTIONS (Simulating Professor)
-======================================================
 
-These instructions simulate the exact steps a user (like your professor) will take after cloning the repository. The goal is to confirm that the new, secure .env configuration works perfectly.
 
 ------------------------------------------------------
 PHASE 1: SETUP
@@ -59,6 +55,4 @@ PHASE 3: RUN AND VERIFY
     b. Verify that the system loads the auction items from the database.
     c. Submit a test bid to ensure the real-time update (via Socket.IO) and the database persistence (via FastAPI/SQLAlchemy) are both working.
 
-======================================================
-END OF TEST INSTRUCTIONS
-======================================================
+
